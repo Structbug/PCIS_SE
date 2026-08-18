@@ -1,0 +1,31 @@
+# Environment / secrets
+.env
+*.env
+!*.env.example
+
+# Python / Django
+__pycache__/
+*.py[cod]
+*.sqlite3
+staticfiles/
+.venv/
+venv/
+logs
+*.log
+
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
