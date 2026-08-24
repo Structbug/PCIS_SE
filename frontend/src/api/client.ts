@@ -7,7 +7,6 @@ const client = axios.create({
   // (defense-in-depth on top of the backend Origin check) (H-06).
   xsrfCookieName: 'csrftoken',
   xsrfHeaderName: 'X-CSRFToken',
-  headers: { 'Content-Type': 'application/json' },
 })
 
 client.interceptors.response.use(

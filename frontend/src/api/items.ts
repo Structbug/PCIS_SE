@@ -108,17 +108,16 @@ export const itemsApi = {
   previewCsvImport: (file: File) => {
     const data = new FormData()
     data.append('file', file)
-    return client.post<ApiResponse<CSVImportPreview>>('/items/import/preview', data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    // Do not set Content-Type here: the browser adds the multipart boundary
+    // required for Django to populate request.FILES.
+    return client.post<ApiResponse<CSVImportPreview>>('/items/import/preview', data)
   },
 
   commitCsvImport: (file: File) => {
     const data = new FormData()
     data.append('file', file)
-    return client.post<ApiResponse<CSVImportResult>>('/items/import/commit', data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    // See previewCsvImport: Axios/browser must construct the multipart header.
+    return client.post<ApiResponse<CSVImportResult>>('/items/import/commit', data)
   },
 
   delete: (id: string) =>

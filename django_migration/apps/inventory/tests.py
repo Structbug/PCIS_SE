@@ -1401,7 +1401,7 @@ class ItemResourceTests(SecurityAwareAPITestCase):
 
     def test_item_query_uses_cursor_without_duplicate_results(self):
         self._auth_as_admin()
-        for number in range(7):
+        for number in range(16):
             Item.objects.create(
                 itemName=f"Monitor {number}", itemCategory=self.category,
                 itemSubCategory=self.sub_category, itemFloor=self.floor,
@@ -1411,7 +1411,7 @@ class ItemResourceTests(SecurityAwareAPITestCase):
         first = self.client.get("/api/v1/items/search", {"search": "Monitor"})
         self.assertEqual(first.status_code, status.HTTP_200_OK)
         first_items = first.data["data"]["items"]
-        self.assertEqual(len(first_items), 6)
+        self.assertEqual(len(first_items), 15)
         cursor = first.data["data"]["nextCursor"]
         self.assertIsNotNone(cursor)
         second = self.client.get("/api/v1/items/search", {"search": "Monitor", "cursor": cursor})
@@ -1563,6 +1563,32 @@ class ItemResourceTests(SecurityAwareAPITestCase):
         self.assertEqual(Item.objects.filter(itemName="Dell Monitor").count(), 2)
         self.assertTrue(Department.objects.filter(departmentName="Civil Engineering").exists())
         self.assertTrue(ActivityLog.objects.filter(action="Items imported from CSV").exists())
+
+    def test_csv_import_accepts_exported_inventory_report_format(self):
+        self._auth_as_admin()
+        csv_content = (
+            '"S.N.","ID","Item Name","Category","Sub-Category","Model",'
+            '"Description","Floor","Room","Status","Source","Price","Acquired Date"\n'
+            '1,"2026MON099","Dell Monitor","Electronics","Monitor","P2419H",'
+            '"For lab","Ground","R101","Working","Purchase",25000,'
+            '"2026-01-15T00:00:00.000Z"\n'
+        ).encode()
+        preview = self.client.post(
+            "/api/v1/items/import/preview",
+            {"file": SimpleUploadedFile("inventory_report.csv", csv_content, content_type="text/csv")},
+        )
+        self.assertEqual(preview.status_code, status.HTTP_200_OK)
+        self.assertEqual(preview.data["data"]["validRows"], 1)
+
+        imported = self.client.post(
+            "/api/v1/items/import/commit",
+            {"file": SimpleUploadedFile("inventory_report.csv", csv_content, content_type="text/csv")},
+        )
+        self.assertEqual(imported.status_code, status.HTTP_201_CREATED)
+        item = Item.objects.get(itemSerialNumber="2026MON099")
+        self.assertEqual(item.itemFloor_id, self.floor.pk)
+        self.assertEqual(item.itemRoom_id, self.room.pk)
+        self.assertEqual(item.itemAcquiredDate.isoformat(), "2026-01-15")
 
     def test_csv_import_is_admin_only(self):
         self._auth_as_user()

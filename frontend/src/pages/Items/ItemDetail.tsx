@@ -78,7 +78,7 @@ export default function ItemDetail() {
         </div>
       </div>
 
-      <div className="detail-card">
+      <div className="detail-card item-detail-card">
         <div className="field-group">
           <span className="field-label">Serial #</span>
           <span className="field-value mono">{item.itemSerialNumber || '—'}</span>

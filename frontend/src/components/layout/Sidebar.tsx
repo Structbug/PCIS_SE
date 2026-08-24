@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { Modal } from '../ui'
 
@@ -43,6 +43,7 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean | null; onToggle: () => void }) {
   const { logout, isAdmin, user } = useAuth()
+  const navigate = useNavigate()
   const [logoutModal, setLogoutModal] = useState(false)
   const navItems = isAdmin ? [...commonNavItems, ...adminNavItems] : commonNavItems
 
@@ -58,7 +59,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean | null; on
           className="brand-title"
           type="button"
           title="Pulchowk Campus Inventory System"
-          onClick={() => window.location.reload()}
+          onClick={() => navigate('/')}
         >
           <img src="/tu-logo.svg" alt="Tribhuvan University Logo" className="brand-logo" />
           PCIS
@@ -100,8 +101,10 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean | null; on
           </div>
         }
       >
-        <p>Are you sure you want to log out?</p>
-        {user && <p className="text-muted">You are logged in as <strong>{user.role}</strong>.</p>}
+        <div className="logout-confirmation">
+          <p className="logout-question">Are you sure you want to log out?</p>
+          {user && <p className="logout-session">Signed in as <strong>{user.username}</strong> · {user.role}</p>}
+        </div>
       </Modal>
     </aside>
   )

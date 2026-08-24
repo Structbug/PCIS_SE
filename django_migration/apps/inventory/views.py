@@ -87,24 +87,55 @@ def validate_item_cost(value):
 def validate_item_acquired_date(value):
     parsed = parse_date(value)
     if parsed is None:
+        parsed_datetime = parse_datetime(value)
+        parsed = parsed_datetime.date() if parsed_datetime else None
+    if parsed is None:
         raise LegacyAPIError(400, "Invalid item acquired date")
     if parsed > date.today():
         raise LegacyAPIError(400, "Item acquired date cannot be in the future")
-    return value
+    return parsed.isoformat()
 
 
 ITEM_CREATE_COUNT_MAX = 100
 CSV_IMPORT_MAX_BYTES = 5 * 1024 * 1024
-CSV_IMPORT_MAX_ROWS = 1000
+CSV_IMPORT_MAX_ROWS = 5000
 CSV_IMPORT_MAX_ITEMS = 5000
 CSV_IMPORT_COLUMNS = (
     "department", "floor", "room", "room_type", "category", "subcategory",
     "item_name", "model_or_make", "source", "status", "cost", "acquired_date",
-    "quantity", "description",
+    "quantity", "description", "item_serial_number",
 )
 CSV_IMPORT_REQUIRED_COLUMNS = {
-    "department", "floor", "room", "room_type", "item_name", "source", "status",
+    "floor", "room", "item_name", "source", "status",
 }
+CSV_IMPORT_HEADER_ALIASES = {
+    "department": "department",
+    "department_name": "department",
+    "floor": "floor",
+    "floor_name": "floor",
+    "room": "room",
+    "room_name": "room",
+    "room_type": "room_type",
+    "roomtype": "room_type",
+    "category": "category",
+    "subcategory": "subcategory",
+    "sub_category": "subcategory",
+    "item_name": "item_name",
+    "itemname": "item_name",
+    "model_or_make": "model_or_make",
+    "model": "model_or_make",
+    "source": "source",
+    "status": "status",
+    "cost": "cost",
+    "price": "cost",
+    "acquired_date": "acquired_date",
+    "quantity": "quantity",
+    "description": "description",
+    "id": "item_serial_number",
+    "serial_number": "item_serial_number",
+}
+CSV_IMPORT_FALLBACK_DEPARTMENT = "Electronics and Computer Engineering"
+CSV_IMPORT_FALLBACK_ROOM_TYPE = "Unspecified"
 
 
 def validate_item_create_count(value):
@@ -132,6 +163,10 @@ def _csv_error(row_number, message):
     return {"row": row_number, "message": message}
 
 
+def _normalized_csv_header(value):
+    return re.sub(r"[^a-z0-9]+", "_", value.strip().casefold()).strip("_")
+
+
 def parse_item_import_csv(uploaded_file):
     """Read a small UTF-8 CSV and return its raw rows with validated headers."""
     if uploaded_file is None:
@@ -147,14 +182,31 @@ def parse_item_import_csv(uploaded_file):
 
     try:
         reader = csv.DictReader(io.StringIO(content))
-        headers = set(reader.fieldnames or [])
+        header_map = {}
+        for header in reader.fieldnames or []:
+            canonical_header = CSV_IMPORT_HEADER_ALIASES.get(_normalized_csv_header(header))
+            if canonical_header:
+                if canonical_header in header_map.values():
+                    raise LegacyAPIError(400, f"CSV has duplicate column: {canonical_header}")
+                header_map[header] = canonical_header
+        headers = set(header_map.values())
         missing_columns = CSV_IMPORT_REQUIRED_COLUMNS - headers
         if missing_columns:
             raise LegacyAPIError(
                 400,
                 "CSV is missing required columns: " + ", ".join(sorted(missing_columns)),
             )
-        rows = [row for row in reader if any(str(value or "").strip() for value in row.values())]
+        missing_location_details = not {"department", "room_type"}.issubset(headers)
+        rows = []
+        for raw_row in reader:
+            if not any(str(value or "").strip() for value in raw_row.values()):
+                continue
+            row = {
+                canonical_header: raw_row.get(header) or ""
+                for header, canonical_header in header_map.items()
+            }
+            row["_use_existing_location"] = missing_location_details
+            rows.append(row)
     except csv.Error:
         raise LegacyAPIError(400, "CSV file could not be read")
 
@@ -174,6 +226,7 @@ def validate_item_import_rows(raw_rows):
 
     for row_number, raw_row in enumerate(raw_rows, start=2):
         row = {column: (raw_row.get(column) or "").strip() for column in CSV_IMPORT_COLUMNS}
+        row["_use_existing_location"] = raw_row.get("_use_existing_location", False)
         missing = [column for column in CSV_IMPORT_REQUIRED_COLUMNS if not row[column]]
         if missing:
             errors.append(_csv_error(row_number, "Missing required value: " + ", ".join(sorted(missing))))
@@ -187,6 +240,7 @@ def validate_item_import_rows(raw_rows):
             "room_type": "roomTypeName", "category": "categoryName",
             "subcategory": "subCategoryName", "item_name": "itemName",
             "model_or_make": "itemModelNumberOrMake", "description": "itemDescription",
+            "item_serial_number": "itemSerialNumber",
         }
         too_long = next(
             (column for column, field in field_lengths.items()
@@ -218,6 +272,9 @@ def validate_item_import_rows(raw_rows):
             continue
 
         row.update({"source": source, "status": status, "quantity": quantity, "cost": cost, "acquired_date": acquired_date})
+        if row["_use_existing_location"]:
+            row["department"] = CSV_IMPORT_FALLBACK_DEPARTMENT
+            row["room_type"] = CSV_IMPORT_FALLBACK_ROOM_TYPE
         valid_rows.append(row)
 
     total_items = sum(row["quantity"] for row in valid_rows)
@@ -240,23 +297,34 @@ def generate_item_serial(sub_category_id):
 
 def get_or_create_import_references(row, user):
     """Resolve the named hierarchy in a CSV row, creating only missing references."""
-    department, _ = Department.objects.get_or_create(
-        departmentNameNormalized=_normalized(row["department"]),
-        isActive=True,
-        defaults={"departmentName": row["department"], "createdBy": user},
-    )
-    floor, _ = Floor.objects.get_or_create(
-        floorNameNormalized=_normalized(row["floor"]), department=department, isActive=True,
-        defaults={"floorName": row["floor"], "createdBy": user},
-    )
-    room_type, _ = RoomType.objects.get_or_create(
-        roomTypeNameNormalized=_normalized(row["room_type"]), department=department, isActive=True,
-        defaults={"roomTypeName": row["room_type"], "createdBy": user},
-    )
-    room, _ = Room.objects.get_or_create(
-        roomNameNormalized=_normalized(row["room"]), floor=floor, roomType=room_type, isActive=True,
-        defaults={"roomName": row["room"], "createdBy": user},
-    )
+    floor = room = None
+    if row["_use_existing_location"]:
+        room = Room.objects.filter(
+            roomNameNormalized=_normalized(row["room"]),
+            floor__floorNameNormalized=_normalized(row["floor"]),
+            floor__isActive=True,
+            isActive=True,
+        ).select_related("floor").first()
+        if room:
+            floor = room.floor
+    if floor is None:
+        department, _ = Department.objects.get_or_create(
+            departmentNameNormalized=_normalized(row["department"]),
+            isActive=True,
+            defaults={"departmentName": row["department"], "createdBy": user},
+        )
+        floor, _ = Floor.objects.get_or_create(
+            floorNameNormalized=_normalized(row["floor"]), department=department, isActive=True,
+            defaults={"floorName": row["floor"], "createdBy": user},
+        )
+        room_type, _ = RoomType.objects.get_or_create(
+            roomTypeNameNormalized=_normalized(row["room_type"]), department=department, isActive=True,
+            defaults={"roomTypeName": row["room_type"], "createdBy": user},
+        )
+        room, _ = Room.objects.get_or_create(
+            roomNameNormalized=_normalized(row["room"]), floor=floor, roomType=room_type, isActive=True,
+            defaults={"roomName": row["room"], "createdBy": user},
+        )
     category = None
     sub_category = None
     if row["category"]:
@@ -558,6 +626,7 @@ class RoomTypeDetailView(APIView):
 
 
 PAGINATION_LIMIT = 6
+ITEM_QUERY_PAGINATION_LIMIT = 15
 
 
 def _optional_object_id(value, field_name):
@@ -1254,7 +1323,10 @@ class ItemCSVImportCommitView(APIView):
                             itemStatus=row["status"],
                             itemSource=row["source"],
                             itemDescription=row["description"] or None,
-                            itemSerialNumber=generate_item_serial(sub_category.pk if sub_category else None),
+                            itemSerialNumber=(
+                                row["item_serial_number"]
+                                or generate_item_serial(sub_category.pk if sub_category else None)
+                            ),
                             createdBy=request.user,
                         )
                     )
@@ -1426,10 +1498,10 @@ class ItemQueryView(APIView):
         results = list(
             Item.objects.filter(q)
             .select_related("itemCategory", "itemSubCategory", "itemFloor", "itemRoom", "createdBy")
-            .order_by("-updated_at", "-pk")[: PAGINATION_LIMIT + 1]
+            .order_by("-updated_at", "-pk")[: ITEM_QUERY_PAGINATION_LIMIT + 1]
         )
-        has_next = len(results) > PAGINATION_LIMIT
-        items = results[:PAGINATION_LIMIT]
+        has_next = len(results) > ITEM_QUERY_PAGINATION_LIMIT
+        items = results[:ITEM_QUERY_PAGINATION_LIMIT]
         return api_response(
             200,
             {
@@ -1458,9 +1530,9 @@ class ItemQueryView(APIView):
             grouping = grouping.filter(
                 Q(max_updated__lt=updated_at) | Q(max_updated=updated_at, max_pk__lt=item_id)
             )
-        groups = list(grouping[: PAGINATION_LIMIT + 1])
-        has_next = len(groups) > PAGINATION_LIMIT
-        groups = groups[:PAGINATION_LIMIT]
+        groups = list(grouping[: ITEM_QUERY_PAGINATION_LIMIT + 1])
+        has_next = len(groups) > ITEM_QUERY_PAGINATION_LIMIT
+        groups = groups[:ITEM_QUERY_PAGINATION_LIMIT]
 
         representatives = {
             item.pk: item

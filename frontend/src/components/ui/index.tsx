@@ -45,7 +45,7 @@ export function Table<T>({ columns, data, keyExtractor, onRowClick, emptyMessage
   }
 
   return (
-    <div className="table-container">
+    <div className="table-container list-table-container">
       <table className="data-table">
         <thead>
           <tr>
@@ -144,8 +144,12 @@ interface AlertProps {
 export function Alert({ type, message, onDismiss }: AlertProps) {
   if (!message) return null
   return (
-    <div className={`alert alert-${type}`} onClick={onDismiss} style={onDismiss ? { cursor: 'pointer' } : undefined}>
-      {message}
+    <div className={`alert alert-${type}`} role="alert">
+      <span className="alert-icon" aria-hidden="true">{type === 'error' ? '!' : '✓'}</span>
+      <span className="alert-message">{message}</span>
+      {onDismiss && (
+        <button className="alert-dismiss" type="button" onClick={onDismiss} aria-label="Dismiss message">×</button>
+      )}
     </div>
   )
 }

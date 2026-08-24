@@ -280,8 +280,8 @@ input, select, textarea, button {
 .app-sidebar .sidebar-footer {
   margin: 10px 10px 14px;
   padding: 10px;
-  background: linear-gradient(160deg, #3e3e48 0%, #27272e 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(160deg, #565662 0%, #41414b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
@@ -297,8 +297,8 @@ input, select, textarea, button {
   padding: 9px 12px;
   color: #cfcac0;
   font-size: var(--font-size-sm);
-  background: linear-gradient(135deg, rgba(180, 104, 92, 0.16) 0%, rgba(180, 104, 92, 0.05) 100%);
-  border: 1px solid rgba(180, 104, 92, 0.25);
+  background: linear-gradient(135deg, rgba(210, 137, 125, 0.24) 0%, rgba(210, 137, 125, 0.1) 100%);
+  border: 1px solid rgba(223, 164, 154, 0.38);
   cursor: pointer;
   text-align: left;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -565,7 +565,11 @@ textarea.form-input {
 }
 .btn-danger:hover { background: var(--status-notworking-bg); }
 
-.btn-sm { padding: 4px 10px; font-size: var(--font-size-xs); }
+.btn-sm {
+  padding: 8px 14px;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
 .btn-group { display: flex; gap: 8px; }
 
 /* ─── Tables ─── */
@@ -612,6 +616,23 @@ table.data-table .mono {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
+}
+
+.list-table-container .data-table {
+  font-size: var(--font-size-lg);
+}
+
+.list-table-container .data-table th {
+  padding: 13px 14px;
+  font-size: var(--font-size-sm);
+}
+
+.list-table-container .data-table td {
+  padding: 13px 14px;
+}
+
+.list-table-container .status-tag {
+  font-size: var(--font-size-sm);
 }
 
 /* ─── Status Tag ─── */
@@ -724,6 +745,68 @@ table.data-table .mono {
   margin-left: 8px;
 }
 
+.item-list-pagination {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.item-list-pagination .pagination {
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0 8px;
+}
+
+.item-list-pagination .pagination button {
+  min-width: 88px;
+  padding: 9px 18px;
+  border-color: #0f607d;
+  background: #0f607d;
+  color: #ffffff;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  box-shadow: 0 3px 8px rgba(15, 96, 125, 0.25);
+}
+
+.item-list-pagination .pagination button:not(:disabled):hover {
+  border-color: #08465c;
+  background: #08465c;
+}
+
+.item-list-pagination .pagination button:disabled {
+  border-color: var(--border-color);
+  background: #dfe7ed;
+  color: #70808c;
+  box-shadow: none;
+}
+
+.item-list-pagination .pagination .page-info {
+  min-width: 90px;
+  padding: 9px 16px;
+  border: 1px solid #d79d27;
+  border-radius: 8px;
+  background: #fff0c7;
+  color: #604400;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  margin-left: 0;
+  text-align: center;
+}
+
+.item-list-pagination .record-footer {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.csv-import-validation-notice {
+  margin-bottom: 16px;
+  color: #8b1f32;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+}
+
 /* ─── Record Count Footer ─── */
 .record-footer {
   font-size: var(--font-size-xs);
@@ -766,6 +849,32 @@ table.data-table .mono {
 
 .detail-card .field-value.mono {
   font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.item-detail-card {
+  max-width: 760px;
+  padding: 28px;
+}
+
+.item-detail-card .field-group {
+  grid-template-columns: 175px 1fr;
+  gap: 6px 16px;
+  margin-bottom: 14px;
+}
+
+.item-detail-card .field-label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.item-detail-card .field-value {
+  font-size: var(--font-size-lg);
+  line-height: 1.55;
+}
+
+.item-detail-card .field-value.mono,
+.item-detail-card .status-tag {
   font-size: var(--font-size-sm);
 }
 
@@ -1014,25 +1123,92 @@ table.data-table .mono {
   background: rgba(107, 45, 59, 0.03);
 }
 
+.logout-question {
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.logout-session {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid #dbe3ec;
+  border-radius: 10px;
+  background: #f6f8fb;
+  color: #4a5d70;
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
+.logout-session strong {
+  color: #24374a;
+}
+
 /* ─── Alert / Message ─── */
 .alert {
-  padding: 8px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
   border: 1px solid;
-  font-size: var(--font-size-sm);
-  margin-bottom: 12px;
+  border-left-width: 4px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  font-size: var(--font-size-lg);
+  font-weight: 500;
+  line-height: 1.45;
+  margin-bottom: 16px;
 }
 
 .alert-error {
-  border-color: var(--danger);
-  background: var(--status-notworking-bg);
-  color: var(--danger);
+  border-color: #e8a2ad;
+  border-left-color: #a5283c;
+  background: #fff5f6;
+  color: #7e1e30;
 }
 
 .alert-success {
-  border-color: var(--success);
-  background: var(--status-working-bg);
-  color: #4a6b49;
+  border-color: #abc6a8;
+  border-left-color: #5d8960;
+  background: #f4faf3;
+  color: #426e45;
 }
+
+.alert-icon {
+  display: inline-flex;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.alert-error .alert-icon { background: #a5283c; }
+.alert-success .alert-icon { background: #5d8960; }
+
+.alert-message { flex: 1; }
+
+.alert-dismiss {
+  width: 26px;
+  height: 26px;
+  margin: -2px -4px -2px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.alert-dismiss:hover { background: rgba(0, 0, 0, 0.06); }
+.alert-dismiss:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 /* ─── Utilities ─── */
 .flex { display: flex; }
@@ -1114,7 +1290,8 @@ table.data-table .mono {
   .filter-bar, .filter-bar-primary, .filter-options { flex-direction: column; align-items: flex-start; }
   .filter-bar .form-group { width: 100%; }
   .form-row { grid-template-columns: 1fr; }
-  .detail-card .field-group { grid-template-columns: 1fr; }
+  .detail-card .field-group,
+  .item-detail-card .field-group { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {

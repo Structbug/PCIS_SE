@@ -298,30 +298,30 @@ export default function ItemList() {
         <p style={{ color: 'var(--text-muted)' }}>Loading...</p>
       ) : (
         <>
-          <Table
-            columns={[
-              { key: 'itemName', label: 'Name', render: (r: ItemReport) => <strong>{r.itemName}</strong> },
-              { key: 'quantity', label: 'Quantity', render: (r: ItemReport) => <strong>{r.quantity ?? 1}</strong> },
-              { key: 'itemModelNumberOrMake', label: 'Model' },
-              { key: 'roomName', label: 'Room' },
-              { key: 'floorName', label: 'Floor' },
-              { key: 'departmentName', label: 'Department' },
-              { key: 'itemSource', label: 'Source' },
-              { key: 'itemStatus', label: 'Status', render: (r: ItemReport) => <StatusTag status={r.itemStatus} /> },
-              { key: 'categoryName', label: 'Category', render: (r: ItemReport) => <span>{r.categoryName || '—'}</span> },
-            ]}
-            data={items}
-            keyExtractor={(r: ItemReport) => r._id}
-            onRowClick={(r: ItemReport) => nav(`/items/${r._id}`)}
-            emptyMessage="No items found"
-          />
-          <div className="flex-between">
+          <div className="item-list-table">
+            <Table
+              columns={[
+                { key: 'itemName', label: 'Name', render: (r: ItemReport) => <strong>{r.itemName}</strong> },
+                { key: 'quantity', label: 'Quantity', render: (r: ItemReport) => <strong>{r.quantity ?? 1}</strong> },
+                { key: 'roomName', label: 'Room' },
+                { key: 'floorName', label: 'Floor' },
+                { key: 'departmentName', label: 'Department' },
+                { key: 'itemStatus', label: 'Status', render: (r: ItemReport) => <StatusTag status={r.itemStatus} /> },
+                { key: 'categoryName', label: 'Category', render: (r: ItemReport) => <span>{r.categoryName || '—'}</span> },
+              ]}
+              data={items}
+              keyExtractor={(r: ItemReport) => r._id}
+              onRowClick={(r: ItemReport) => nav(`/items/${r._id}`)}
+              emptyMessage="No items found"
+            />
+          </div>
+          <div className="item-list-pagination">
             <div className="pagination">
               <button disabled={loading || page <= 1} onClick={goToPreviousPage}>Prev</button>
               <span className="page-info">Page {page}</span>
               <button disabled={loading || !nextCursor} onClick={goToNextPage}>Next</button>
             </div>
-            <div className="record-footer">Showing up to 6 results per page</div>
+            <div className="record-footer">Showing up to 15 results per page</div>
           </div>
         </>
       )}
@@ -337,7 +337,8 @@ export default function ItemList() {
           </div>
         }
       >
-        <p className="text-muted mb-16">Only administrators can import. The file must be UTF-8 CSV with department, floor, room, room type, item name, source, and status columns.</p>
+        <p className="text-muted mb-16">Upload a UTF-8 encoded CSV file and review the validation results before importing the records.</p>
+        <p className="csv-import-validation-notice">You must validate the CSV file before importing.</p>
         <Alert type="error" message={importError} onDismiss={() => setImportError('')} />
         <div className="form-group">
           <label htmlFor="item-csv-file">CSV file</label>
@@ -348,7 +349,7 @@ export default function ItemList() {
           }} />
         </div>
         <button className="btn btn-sm" onClick={previewImport} disabled={!importFile || previewingImport}>
-          {previewingImport ? 'Checking...' : 'Preview CSV'}
+          {previewingImport ? 'Checking...' : 'Validate CSV'}
         </button>
         {importPreview && (
           <div className="mt-16">
