@@ -1,4 +1,6 @@
 import base64
+import csv
+import io
 import json
 import re
 
@@ -8,10 +10,10 @@ from rest_framework.views import APIView
 from apps.accounts.api import LegacyAPIError, api_response
 from apps.accounts.permissions import IsAdminRole
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
+from django.db import transaction
 from django.db.models import Count, Q, Sum
-from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from .models import ActivityLog, Category, Department, Floor, Item, Room, RoomType, SubCategory
@@ -92,6 +94,17 @@ def validate_item_acquired_date(value):
 
 
 ITEM_CREATE_COUNT_MAX = 100
+CSV_IMPORT_MAX_BYTES = 5 * 1024 * 1024
+CSV_IMPORT_MAX_ROWS = 1000
+CSV_IMPORT_MAX_ITEMS = 5000
+CSV_IMPORT_COLUMNS = (
+    "department", "floor", "room", "room_type", "category", "subcategory",
+    "item_name", "model_or_make", "source", "status", "cost", "acquired_date",
+    "quantity", "description",
+)
+CSV_IMPORT_REQUIRED_COLUMNS = {
+    "department", "floor", "room", "room_type", "item_name", "source", "status",
+}
 
 
 def validate_item_create_count(value):
@@ -109,6 +122,160 @@ def validate_item_create_count(value):
             400, f"item_create_count must not exceed {ITEM_CREATE_COUNT_MAX}"
         )
     return count
+
+
+def _normalized(value):
+    return value.strip().casefold()
+
+
+def _csv_error(row_number, message):
+    return {"row": row_number, "message": message}
+
+
+def parse_item_import_csv(uploaded_file):
+    """Read a small UTF-8 CSV and return its raw rows with validated headers."""
+    if uploaded_file is None:
+        raise LegacyAPIError(400, "A CSV file is required")
+    if uploaded_file.size > CSV_IMPORT_MAX_BYTES:
+        raise LegacyAPIError(400, "CSV file must not exceed 5 MB")
+    if not uploaded_file.name.lower().endswith(".csv"):
+        raise LegacyAPIError(400, "Please upload a CSV file")
+    try:
+        content = uploaded_file.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise LegacyAPIError(400, "CSV file must be UTF-8 encoded")
+
+    try:
+        reader = csv.DictReader(io.StringIO(content))
+        headers = set(reader.fieldnames or [])
+        missing_columns = CSV_IMPORT_REQUIRED_COLUMNS - headers
+        if missing_columns:
+            raise LegacyAPIError(
+                400,
+                "CSV is missing required columns: " + ", ".join(sorted(missing_columns)),
+            )
+        rows = [row for row in reader if any(str(value or "").strip() for value in row.values())]
+    except csv.Error:
+        raise LegacyAPIError(400, "CSV file could not be read")
+
+    if not rows:
+        raise LegacyAPIError(400, "CSV file does not contain any data rows")
+    if len(rows) > CSV_IMPORT_MAX_ROWS:
+        raise LegacyAPIError(400, f"CSV must not contain more than {CSV_IMPORT_MAX_ROWS} rows")
+    return rows
+
+
+def validate_item_import_rows(raw_rows):
+    """Validate user-facing CSV values without writing to the database."""
+    valid_rows = []
+    errors = []
+    source_lookup = {value.casefold(): value for value, _ in Item.Source.choices}
+    status_lookup = {value.casefold(): value for value, _ in Item.Status.choices}
+
+    for row_number, raw_row in enumerate(raw_rows, start=2):
+        row = {column: (raw_row.get(column) or "").strip() for column in CSV_IMPORT_COLUMNS}
+        missing = [column for column in CSV_IMPORT_REQUIRED_COLUMNS if not row[column]]
+        if missing:
+            errors.append(_csv_error(row_number, "Missing required value: " + ", ".join(sorted(missing))))
+            continue
+        if row["subcategory"] and not row["category"]:
+            errors.append(_csv_error(row_number, "A category is required when subcategory is provided"))
+            continue
+
+        field_lengths = {
+            "department": "departmentName", "floor": "floorName", "room": "roomName",
+            "room_type": "roomTypeName", "category": "categoryName",
+            "subcategory": "subCategoryName", "item_name": "itemName",
+            "model_or_make": "itemModelNumberOrMake", "description": "itemDescription",
+        }
+        too_long = next(
+            (column for column, field in field_lengths.items()
+             if len(row[column]) > FIELD_MAX_LENGTHS[field]),
+            None,
+        )
+        if too_long:
+            errors.append(_csv_error(row_number, f"{too_long} is too long"))
+            continue
+
+        source = source_lookup.get(row["source"].casefold())
+        status = status_lookup.get(row["status"].casefold())
+        if not source:
+            errors.append(_csv_error(row_number, "Source must be Purchase or Donation"))
+            continue
+        if not status:
+            errors.append(_csv_error(row_number, "Status must be Working, Repairable, or Not working"))
+            continue
+        try:
+            quantity = validate_item_create_count(row["quantity"] or 1)
+        except LegacyAPIError:
+            errors.append(_csv_error(row_number, "Quantity must be a whole number from 1 to 100"))
+            continue
+        try:
+            cost = validate_item_cost(row["cost"]) if row["cost"] else None
+            acquired_date = validate_item_acquired_date(row["acquired_date"]) if row["acquired_date"] else None
+        except LegacyAPIError as exc:
+            errors.append(_csv_error(row_number, str(exc.detail)))
+            continue
+
+        row.update({"source": source, "status": status, "quantity": quantity, "cost": cost, "acquired_date": acquired_date})
+        valid_rows.append(row)
+
+    total_items = sum(row["quantity"] for row in valid_rows)
+    if total_items > CSV_IMPORT_MAX_ITEMS:
+        errors.append(_csv_error(0, f"CSV cannot create more than {CSV_IMPORT_MAX_ITEMS} items"))
+    return valid_rows, errors, total_items
+
+
+def generate_item_serial(sub_category_id):
+    """Allocate the next serial number for an item subcategory."""
+    year = datetime.now().strftime("%Y")
+    if not sub_category_id:
+        return f"{year}XXX001"
+    sub = SubCategory.objects.get(pk=sub_category_id)
+    abbreviation = sub.subCategoryAbbreviation or "XXX"
+    sub.lastItemSerialNumber += 1
+    sub.save(update_fields=["lastItemSerialNumber", "updated_at"])
+    return f"{year}{abbreviation}{str(sub.lastItemSerialNumber).zfill(3)}"
+
+
+def get_or_create_import_references(row, user):
+    """Resolve the named hierarchy in a CSV row, creating only missing references."""
+    department, _ = Department.objects.get_or_create(
+        departmentNameNormalized=_normalized(row["department"]),
+        isActive=True,
+        defaults={"departmentName": row["department"], "createdBy": user},
+    )
+    floor, _ = Floor.objects.get_or_create(
+        floorNameNormalized=_normalized(row["floor"]), department=department, isActive=True,
+        defaults={"floorName": row["floor"], "createdBy": user},
+    )
+    room_type, _ = RoomType.objects.get_or_create(
+        roomTypeNameNormalized=_normalized(row["room_type"]), department=department, isActive=True,
+        defaults={"roomTypeName": row["room_type"], "createdBy": user},
+    )
+    room, _ = Room.objects.get_or_create(
+        roomNameNormalized=_normalized(row["room"]), floor=floor, roomType=room_type, isActive=True,
+        defaults={"roomName": row["room"], "createdBy": user},
+    )
+    category = None
+    sub_category = None
+    if row["category"]:
+        category, _ = Category.objects.get_or_create(
+            categoryNameNormalized=_normalized(row["category"]), isActive=True,
+            defaults={"categoryName": row["category"], "createdBy": user},
+        )
+    if row["subcategory"]:
+        abbreviation = "".join(char for char in row["subcategory"].upper() if char.isalnum())[:20] or "CSV"
+        sub_category, _ = SubCategory.objects.get_or_create(
+            subCategoryNameNormalized=_normalized(row["subcategory"]), category=category, isActive=True,
+            defaults={
+                "subCategoryName": row["subcategory"],
+                "subCategoryAbbreviation": abbreviation,
+                "subCategoryAbbreviationNormalized": abbreviation.casefold(),
+                "createdBy": user,
+            },
+        )
+    return floor, room, category, sub_category
 
 
 def log_activity(
@@ -1037,18 +1204,74 @@ class ItemCreateView(APIView):
         )
 
     def _generate_serial(self, sub_category_id):
-        year = datetime.now().strftime("%Y")
-        try:
-            sub = SubCategory.objects.get(pk=sub_category_id)
-            abbr = sub.subCategoryAbbreviation or "XXX"
-            last = sub.lastItemSerialNumber
-            sub.lastItemSerialNumber = last + 1
-            sub.save(update_fields=["lastItemSerialNumber", "updated_at"])
-            seq = str(last + 1).zfill(3)
-        except SubCategory.DoesNotExist:
-            abbr = "XXX"
-            seq = "001"
-        return f"{year}{abbr}{seq}"
+        return generate_item_serial(sub_category_id)
+
+
+class ItemCSVImportPreviewView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def post(self, request):
+        raw_rows = parse_item_import_csv(request.FILES.get("file"))
+        valid_rows, errors, total_items = validate_item_import_rows(raw_rows)
+        return api_response(
+            200,
+            {
+                "fileName": request.FILES["file"].name,
+                "totalRows": len(raw_rows),
+                "validRows": len(valid_rows),
+                "totalItems": total_items,
+                "errors": errors[:50],
+            },
+            "CSV is ready to import" if not errors else "CSV has rows that need attention",
+        )
+
+
+class ItemCSVImportCommitView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def post(self, request):
+        uploaded_file = request.FILES.get("file")
+        raw_rows = parse_item_import_csv(uploaded_file)
+        valid_rows, errors, total_items = validate_item_import_rows(raw_rows)
+        if errors:
+            raise LegacyAPIError(400, "CSV contains invalid rows", errors=errors[:50])
+
+        with transaction.atomic():
+            created_items = []
+            for row in valid_rows:
+                floor, room, category, sub_category = get_or_create_import_references(row, request.user)
+                for _ in range(row["quantity"]):
+                    created_items.append(
+                        Item(
+                            itemName=row["item_name"],
+                            itemCategory=category,
+                            itemSubCategory=sub_category,
+                            itemModelNumberOrMake=row["model_or_make"] or None,
+                            itemAcquiredDate=row["acquired_date"],
+                            itemCost=row["cost"],
+                            itemFloor=floor,
+                            itemRoom=room,
+                            itemStatus=row["status"],
+                            itemSource=row["source"],
+                            itemDescription=row["description"] or None,
+                            itemSerialNumber=generate_item_serial(sub_category.pk if sub_category else None),
+                            createdBy=request.user,
+                        )
+                    )
+            Item.objects.bulk_create(created_items)
+            log_activity(
+                request,
+                "Items imported from CSV",
+                ActivityLog.EntityType.ITEM,
+                entity_name=uploaded_file.name,
+                description=f"Imported {total_items} item(s) from {len(valid_rows)} CSV row(s)",
+                changes={"fileName": uploaded_file.name, "rows": len(valid_rows), "items": total_items},
+            )
+        return api_response(
+            201,
+            {"fileName": uploaded_file.name, "importedRows": len(valid_rows), "importedItems": total_items},
+            "CSV imported successfully",
+        )
 
 
 class ItemSourceView(APIView):
@@ -1391,6 +1614,51 @@ class ItemDetailView(APIView):
             )
             return api_response(200, ItemSerializer(item).data, "Item room updated successfully")
 
+        elif action == "department":
+            department_id = request.data.get("new_department_id")
+            room_id = request.data.get("new_room_id")
+            if not department_id or not room_id:
+                raise LegacyAPIError(400, "Department and room are required")
+            department_id = require_object_id(department_id.strip())
+            room_id = require_object_id(room_id.strip())
+            try:
+                item = Item.objects.get(pk=item_id)
+            except Item.DoesNotExist:
+                raise LegacyAPIError(404, "Item not found")
+            try:
+                department = Department.objects.get(pk=department_id, isActive=True)
+            except Department.DoesNotExist:
+                raise LegacyAPIError(404, "Department not found")
+            try:
+                room = Room.objects.select_related("floor").get(pk=room_id, isActive=True)
+            except Room.DoesNotExist:
+                raise LegacyAPIError(404, "Room not found")
+            if (
+                room.floor_id is None
+                or not room.floor.isActive
+                or room.floor.department_id != department.pk
+            ):
+                raise LegacyAPIError(
+                    400, "Selected room does not belong to the selected department"
+                )
+            item.itemRoom_id = room.pk
+            item.itemFloor_id = room.floor_id
+            item.save(update_fields=["itemRoom_id", "itemFloor_id", "updated_at"])
+            log_activity(
+                request,
+                "Item department updated",
+                ActivityLog.EntityType.ITEM,
+                entity=item,
+                entity_name=item.itemName,
+                description=(
+                    f"Moved to {department.departmentName}, {room.floor.floorName}, "
+                    f"room {room.roomName}"
+                ),
+            )
+            return api_response(
+                200, ItemSerializer(item).data, "Item department updated successfully"
+            )
+
     def delete(self, request, item_id, action=None):
         item_id = require_object_id(item_id.strip())
         try:
@@ -1667,42 +1935,6 @@ class InventoryLogsView(APIView):
             )
         return api_response(200, [], "Recent logs fetched successfully")
 
-    def delete(self, request, page=None, starting_date=None, end_date=None):
-        """Delete a single log (24-hex id) or all logs ("clear")."""
-        if not page:
-            raise LegacyAPIError(400, "No log target provided")
-        target = page.strip()
-        if target == "clear":
-            count, _ = ActivityLog.objects.all().delete()
-            return api_response(
-                200, {"deleted": count}, f"{count} logs deleted successfully"
-            )
-        if target.isdigit():
-            raise LegacyAPIError(400, "Invalid log target")
-        log_id = require_object_id(target)
-        try:
-            log = ActivityLog.objects.get(pk=log_id)
-        except ActivityLog.DoesNotExist:
-            raise LegacyAPIError(404, "Activity log not found")
-        deleted_id = log.pk
-        log.delete()
-        return api_response(200, {"_id": deleted_id}, "Activity log deleted successfully")
-
-
-class ActivityLogPurgeView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminRole]
-
-    def delete(self, request, days):
-        if days < 1:
-            raise LegacyAPIError(400, "Days must be at least 1")
-        cutoff = timezone.now() - timedelta(days=days)
-        count, _ = ActivityLog.objects.filter(created_at__lt=cutoff).delete()
-        return api_response(
-            200,
-            {"deleted": count},
-            f"{count} logs older than {days} day(s) deleted successfully",
-        )
-
 
 class InventoryRecentLogsView(APIView):
     permission_classes = [IsAuthenticated, IsAdminRole]
@@ -1742,3 +1974,33 @@ class InventoryStatsView(APIView):
             },
             "Stats fetched successfully",
         )
+
+
+class InventoryCategoryStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Items without a category are grouped under "Uncategorized".
+        rows = (
+            Item.objects.filter(isActive=True)
+            .values("itemCategory")
+            .annotate(totalItems=Count("pk"))
+            .order_by("-totalItems")
+        )
+        cat_ids = [row["itemCategory"] for row in rows if row["itemCategory"]]
+        names = dict(
+            Category.objects.filter(pk__in=cat_ids).values_list("pk", "categoryName")
+        )
+        data = [
+            {
+                "categoryId": row["itemCategory"],
+                "categoryName": (
+                    names.get(row["itemCategory"], "Uncategorized")
+                    if row["itemCategory"]
+                    else "Uncategorized"
+                ),
+                "totalItems": row["totalItems"],
+            }
+            for row in rows
+        ]
+        return api_response(200, data, "Category stats fetched successfully")

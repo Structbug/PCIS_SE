@@ -15,6 +15,7 @@ export default function UserList() {
 
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [registerModal, setRegisterModal] = useState(false)
+  const [registerError, setRegisterError] = useState('')
   const [formUsername, setFormUsername] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formPhone, setFormPhone] = useState('')
@@ -38,13 +39,14 @@ export default function UserList() {
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setPage(1); loadUsers() }
 
   const handleRegister = async () => {
-    if (!formUsername || !formEmail || !formPhone || !formPassword) { setError('All fields required'); return }
+    if (!formUsername || !formEmail || !formPhone || !formPassword) { setRegisterError('All fields required'); return }
+    setRegisterError('')
     setSaving(true)
     try {
       await authApi.register({ username: formUsername, email: formEmail, phone_number: formPhone, password: formPassword, role: formRole as User['role'] })
       setMessage('User created')
       setRegisterModal(false); loadUsers()
-    } catch { setError('Registration failed') }
+    } catch { setRegisterError('Registration failed') }
     finally { setSaving(false) }
   }
 
@@ -61,12 +63,12 @@ export default function UserList() {
 
   return (
     <div>
-      <Alert type="error" message={error} onDismiss={() => setError('')} />
+      {!registerModal && <Alert type="error" message={error} onDismiss={() => setError('')} />}
       <Alert type="success" message={message} onDismiss={() => setMessage('')} />
 
       <div className="flex-between mb-16">
         <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--font-size-xl)' }}>Users</h3>
-        <button className="btn btn-sm btn-primary" onClick={() => { setFormUsername(''); setFormEmail(''); setFormPhone(''); setFormPassword(''); setFormRole('User'); setRegisterModal(true) }}>
+        <button className="btn btn-sm btn-primary" onClick={() => { setRegisterError(''); setError(''); setFormUsername(''); setFormEmail(''); setFormPhone(''); setFormPassword(''); setFormRole('User'); setRegisterModal(true) }}>
           + New User
         </button>
       </div>
@@ -111,6 +113,7 @@ export default function UserList() {
           </div>
         }
       >
+        <Alert type="error" message={registerError} onDismiss={() => setRegisterError('')} />
         <form id="user-form" onSubmit={(e) => { e.preventDefault(); handleRegister() }}>
           <div className="form-group">
             <label>Username</label>

@@ -165,7 +165,3 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "_id",
     "CHECK_USER_IS_ACTIVE": True,
 }
-
-# Activity logs older than this many days are pruned by the
-# `cleanup_activity_logs` management command (see apps/inventory/management).
-ACTIVITY_LOG_RETENTION_DAYS = env.int("ACTIVITY_LOG_RETENTION_DAYS", default=90)

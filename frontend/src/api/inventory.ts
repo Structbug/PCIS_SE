@@ -1,8 +1,11 @@
 import client from './client'
-import type { ApiResponse, InventoryStats, PaginatedLogs, ActivityLog } from '../types'
+import type { ApiResponse, CategoryStat, InventoryStats, PaginatedLogs, ActivityLog } from '../types'
 
 export const inventoryApi = {
   stats: () => client.get<ApiResponse<InventoryStats>>('/inventory/stats'),
+
+  categoryStats: () =>
+    client.get<ApiResponse<CategoryStat[]>>('/inventory/category-stats'),
 
   logs: (page: string) =>
     client.get<ApiResponse<PaginatedLogs>>(`/inventory/logs/${encodeURIComponent(page)}`),
@@ -14,13 +17,4 @@ export const inventoryApi = {
 
   recentLogs: () =>
     client.get<ApiResponse<ActivityLog[]>>('/inventory/recent-logs'),
-
-  deleteLog: (id: string) =>
-    client.delete<ApiResponse<{ _id: string }>>(`/inventory/logs/${encodeURIComponent(id)}`),
-
-  clearLogs: () =>
-    client.delete<ApiResponse<{ deleted: number }>>('/inventory/logs/clear'),
-
-  purgeLogs: (days: number) =>
-    client.delete<ApiResponse<{ deleted: number }>>(`/inventory/logs/purge/${encodeURIComponent(String(days))}`),
 }

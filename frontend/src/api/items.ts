@@ -48,6 +48,20 @@ export interface ItemQueryParams {
   group?: string
 }
 
+export interface CSVImportPreview {
+  fileName: string
+  totalRows: number
+  validRows: number
+  totalItems: number
+  errors: Array<{ row: number; message: string }>
+}
+
+export interface CSVImportResult {
+  fileName: string
+  importedRows: number
+  importedItems: number
+}
+
 export const itemsApi = {
   create: (data: ItemCreateData) =>
     client.post<ApiResponse<Item[]>>('/items/', data),
@@ -84,6 +98,28 @@ export const itemsApi = {
 
   moveRoom: (id: string, newRoomId: string) =>
     client.patch<ApiResponse<Item>>(`/items/${encodeURIComponent(id)}/room`, { new_room_id: newRoomId }),
+
+  moveDepartment: (id: string, newDepartmentId: string, newRoomId: string) =>
+    client.patch<ApiResponse<Item>>(`/items/${encodeURIComponent(id)}/department`, {
+      new_department_id: newDepartmentId,
+      new_room_id: newRoomId,
+    }),
+
+  previewCsvImport: (file: File) => {
+    const data = new FormData()
+    data.append('file', file)
+    return client.post<ApiResponse<CSVImportPreview>>('/items/import/preview', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  commitCsvImport: (file: File) => {
+    const data = new FormData()
+    data.append('file', file)
+    return client.post<ApiResponse<CSVImportResult>>('/items/import/commit', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   delete: (id: string) =>
     client.delete<ApiResponse<Item>>(`/items/${encodeURIComponent(id)}`),

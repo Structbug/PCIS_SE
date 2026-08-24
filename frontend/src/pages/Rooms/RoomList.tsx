@@ -18,6 +18,7 @@ export default function RoomList() {
   const [message, setMessage] = useState('')
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [floorFilter, setFloorFilter] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState('')
 
@@ -109,25 +110,44 @@ export default function RoomList() {
 
       <div className="mb-16">
         <form className="filter-bar" onSubmit={handleSearch} style={{ marginBottom: 0 }}>
-          <div className="form-group">
-            <label>Search</label>
-            <input className="form-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Room name..." />
+          <div className="filter-bar-primary">
+            <div className="form-group">
+              <label>Search</label>
+              <input className="form-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Room name..." />
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm filter-toggle"
+              onClick={() => setFiltersOpen(open => !open)}
+              aria-expanded={filtersOpen}
+              aria-controls="room-filter-options"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 5h16M7 12h10m-7 7h4" />
+              </svg>
+              Filters
+            </button>
+            <button type="submit" className="btn btn-sm">Search</button>
           </div>
-          <div className="form-group">
-            <label>Department</label>
-            <select className="form-input" value={departmentFilter} onChange={e => { setDepartmentFilter(e.target.value); setFloorFilter(''); setPage(1) }}>
-              <option value="">All</option>
-              {departments.map(d => <option key={d._id} value={d._id}>{d.departmentName}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Floor</label>
-            <select className="form-input" value={floorFilter} disabled={!departmentFilter} onChange={e => { setFloorFilter(e.target.value); setPage(1) }}>
-              <option value="">{departmentFilter ? 'All' : 'Select department first'}</option>
-              {floors.map(f => <option key={f._id} value={f._id}>{floorLabels[f._id]}</option>)}
-            </select>
-          </div>
-          <button type="submit" className="btn btn-sm">Search</button>
+          {filtersOpen && (
+            <div id="room-filter-options" className="filter-options">
+              <div className="form-group">
+                <label>Department</label>
+                <select className="form-input" value={departmentFilter} onChange={e => { setDepartmentFilter(e.target.value); setFloorFilter(''); setPage(1) }}>
+                  <option value="">All</option>
+                  {departments.map(d => <option key={d._id} value={d._id}>{d.departmentName}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Floor</label>
+                <select className="form-input" value={floorFilter} disabled={!departmentFilter} onChange={e => { setFloorFilter(e.target.value); setPage(1) }}>
+                  <option value="">{departmentFilter ? 'All' : 'Select department first'}</option>
+                  {floors.map(f => <option key={f._id} value={f._id}>{floorLabels[f._id]}</option>)}
+                </select>
+              </div>
+              <button type="submit" className="btn btn-sm">Apply filters</button>
+            </div>
+          )}
         </form>
       </div>
 

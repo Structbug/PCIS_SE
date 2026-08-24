@@ -32,36 +32,6 @@ export interface TokenPair {
   refresh: string
 }
 
-export interface AccessRequest {
-  _id: string
-  fullName: string
-  email: string
-  department: string
-  rollNo?: string | null
-  description?: string | null
-  status: 'Pending' | 'Approved' | 'Denied'
-  createdAt: string
-  updatedAt: string
-}
-
-export interface AccessRequestsResponse {
-  requests: AccessRequest[]
-  pendingCount: number
-}
-
-export interface BlockedRequester {
-  _id: string
-  email: string
-  createdBy: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface BlockedRequestersResponse {
-  blockedRequesters: BlockedRequester[]
-  totalBlocked: number
-}
-
 export interface Floor {
   _id: string
   floorName: string
@@ -195,6 +165,12 @@ export interface InventoryStats {
   no_not_working: number
   no_total_items_till_last_month: number
   inventory_total_value: number
+}
+
+export interface CategoryStat {
+  categoryId: string | null
+  categoryName: string
+  totalItems: number
 }
 
 export interface ActivityLog {

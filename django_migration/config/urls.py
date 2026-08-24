@@ -5,12 +5,7 @@ from django.conf import settings
 from django.views.static import serve as static_serve
 
 from apps.accounts.views import (
-    AccessRequestAdminDetailView,
-    AccessRequestCreateView,
-    AccessRequestsAdminView,
     ActiveUsersView,
-    BlockedRequesterDetailView,
-    BlockedRequestersView,
     ChangePasswordView,
     CurrentUserView,
     DeleteUserView,
@@ -21,7 +16,6 @@ from apps.accounts.views import (
     RegisterView,
 )
 from apps.inventory.views import (
-    ActivityLogPurgeView,
     CategoryDescriptionView,
     CategoryDetailView,
     CategoryListCreateView,
@@ -32,9 +26,12 @@ from apps.inventory.views import (
     InventoryLogsView,
     InventoryRecentLogsView,
     InventoryStatsView,
+    InventoryCategoryStatsView,
     ItemAllView,
     ItemBulkView,
     ItemCommonView,
+    ItemCSVImportCommitView,
+    ItemCSVImportPreviewView,
     ItemCreateView,
     ItemDetailView,
     ItemFilterView,
@@ -76,31 +73,6 @@ urlpatterns = [
     path("api/v1/users/refresh", RefreshView.as_view(), name="token-refresh"),
     path("api/v1/users/current-user", CurrentUserView.as_view(), name="current-user"),
     path("api/v1/users/<str:user_id>", DeleteUserView.as_view(), name="delete-user"),
-    path(
-        "api/v1/access-requests/",
-        AccessRequestCreateView.as_view(),
-        name="access-request-create",
-    ),
-    path(
-        "api/v1/access-requests/all/",
-        AccessRequestsAdminView.as_view(),
-        name="access-request-list",
-    ),
-    path(
-        "api/v1/access-requests/<str:request_id>",
-        AccessRequestAdminDetailView.as_view(),
-        name="access-request-detail",
-    ),
-    path(
-        "api/v1/blocked-requesters/",
-        BlockedRequestersView.as_view(),
-        name="blocked-requesters",
-    ),
-    path(
-        "api/v1/blocked-requesters/<str:requester_id>",
-        BlockedRequesterDetailView.as_view(),
-        name="blocked-requester-detail",
-    ),
     path("api/v1/floors/", FloorListCreateView.as_view(), name="floor-list-create"),
     path("api/v1/floors/<str:floor_id>", FloorDetailView.as_view(), name="floor-detail"),
     path("api/v1/departments/", DepartmentListCreateView.as_view(), name="department-list-create"),
@@ -159,6 +131,8 @@ urlpatterns = [
         name="room-detail",
     ),
     path("api/v1/items/", ItemCreateView.as_view(), name="item-create"),
+    path("api/v1/items/import/preview", ItemCSVImportPreviewView.as_view(), name="item-csv-import-preview"),
+    path("api/v1/items/import/commit", ItemCSVImportCommitView.as_view(), name="item-csv-import-commit"),
     path("api/v1/items/item_source", ItemSourceView.as_view(), name="item-source"),
     path("api/v1/items/item_status", ItemStatusView.as_view(), name="item-status"),
     path("api/v1/items/item/<str:item_id>", ItemSingleView.as_view(), name="item-single"),
@@ -209,6 +183,12 @@ urlpatterns = [
         name="item-room-move",
     ),
     path(
+        "api/v1/items/<str:item_id>/department",
+        ItemDetailView.as_view(),
+        {"action": "department"},
+        name="item-department-move",
+    ),
+    path(
         "api/v1/items/<str:item_id>/history",
         ItemHistoryView.as_view(),
         name="item-history",
@@ -235,11 +215,6 @@ urlpatterns = [
         name="inventory-logs",
     ),
     path(
-        "api/v1/inventory/logs/purge/<int:days>",
-        ActivityLogPurgeView.as_view(),
-        name="inventory-logs-purge",
-    ),
-    path(
         "api/v1/inventory/recent-logs",
         InventoryRecentLogsView.as_view(),
         name="inventory-recent-logs",
@@ -248,6 +223,11 @@ urlpatterns = [
         "api/v1/inventory/stats",
         InventoryStatsView.as_view(),
         name="inventory-stats",
+    ),
+    path(
+        "api/v1/inventory/category-stats",
+        InventoryCategoryStatsView.as_view(),
+        name="inventory-category-stats",
     ),
 ]
 

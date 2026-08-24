@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import RegexValidator
 from rest_framework import serializers
 
-from .models import AccessRequest, BlockedRequester, User
+from .models import User
 
 USERNAME_REGEX = RegexValidator(
     regex=r"^[\w.@+-]+$",
@@ -99,34 +99,3 @@ class CurrentUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ("_id", "username", "email", "role")
-
-
-class AccessRequestSerializer(serializers.ModelSerializer):
-    _id = serializers.CharField(source="pk", read_only=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
-
-    class Meta:
-        model = AccessRequest
-        fields = (
-            "_id",
-            "fullName",
-            "email",
-            "department",
-            "rollNo",
-            "description",
-            "status",
-            "createdAt",
-            "updatedAt",
-        )
-
-
-class BlockedRequesterSerializer(serializers.ModelSerializer):
-    _id = serializers.CharField(source="pk", read_only=True)
-    createdBy = serializers.CharField(source="created_by_id", read_only=True, allow_null=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
-
-    class Meta:
-        model = BlockedRequester
-        fields = ("_id", "email", "createdBy", "createdAt", "updatedAt")

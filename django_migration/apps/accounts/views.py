@@ -3,7 +3,6 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import hashers
-from django.core.validators import validate_email
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -13,12 +12,10 @@ from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .api import LegacyAPIError, api_response
-from .models import AccessRequest, BlockedRequester, User
+from .models import User
 from .permissions import IsAdminRole
 from .security import enforce_csrf_origin, set_csrf_cookie
 from .serializers import (
-    AccessRequestSerializer,
-    BlockedRequesterSerializer,
     PasswordChangeSerializer,
     ProfileSerializer,
     RegisterSerializer,
@@ -28,15 +25,6 @@ from .throttling import LoginRateThrottle
 
 PAGINATION_LIMIT = 6
 OBJECT_ID_PATTERN = re.compile(r"^[0-9a-fA-F]{24}$")
-ACCESS_REQUEST_MONTHLY_LIMIT = 4
-ACCESS_REQUEST_ALLOWED_DOMAIN = "pcampus.edu.np"
-
-ACCESS_REQUEST_MAX_LENGTHS = {
-    "fullName": 120,
-    "department": 200,
-    "rollNo": 50,
-    "description": 2000,
-}
 
 # A bogus hash used purely for timing parity: a login attempt against a
 # nonexistent username pays the same password-hashing cost as a wrong-password
@@ -438,180 +426,3 @@ class CurrentUserView(APIView):
             },
             "Current user fetched successfully",
         )
-
-
-class AccessRequestCreateView(APIView):
-    """Public endpoint for people without an account to request access.
-
-    Not authenticated, so it must not inherit any authentication classes (a
-    stale access cookie must not 401 it before the view runs, mirroring
-    LoginView), and it enforces the Origin/Referer check directly (H-06).
-    """
-
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def post(self, request):
-        enforce_csrf_origin(request)
-        data = request.data
-
-        full_name = data.get("fullName")
-        email = data.get("email")
-        department = data.get("department")
-        roll_no = data.get("rollNo")
-        description = data.get("description")
-
-        if not full_name or not full_name.strip():
-            raise LegacyAPIError(400, "Full name is required.")
-        if not email or not email.strip():
-            raise LegacyAPIError(400, "Email is required.")
-        if not department or not department.strip():
-            raise LegacyAPIError(400, "Department is required.")
-        if not description or not description.strip():
-            raise LegacyAPIError(400, "Description is required.")
-        for field, value in ACCESS_REQUEST_MAX_LENGTHS.items():
-            if value is not None and len(str(data.get(field) or "")) > value:
-                raise LegacyAPIError(
-                    400, f"{field} must be at most {value} characters"
-                )
-        try:
-            validate_email(email.strip())
-        except Exception:
-            raise LegacyAPIError(400, "Invalid email address.")
-
-        normalized_email = email.strip().lower()
-        if not normalized_email.endswith(f"@{ACCESS_REQUEST_ALLOWED_DOMAIN}"):
-            raise LegacyAPIError(
-                400,
-                f"Access requests can only be submitted with a @{ACCESS_REQUEST_ALLOWED_DOMAIN} email address.",
-            )
-        # Admin blacklist takes precedence over the monthly quota: a blocked
-        # requester cannot submit at all until an admin unblocks the email.
-        if BlockedRequester.objects.filter(email=normalized_email).exists():
-            raise LegacyAPIError(
-                403, "Your email is blocked from submitting access requests."
-            )
-        month_ago = timezone.now() - timedelta(days=30)
-        monthly_count = AccessRequest.objects.filter(
-            email=normalized_email, created_at__gte=month_ago
-        ).count()
-        if monthly_count >= ACCESS_REQUEST_MONTHLY_LIMIT:
-            raise LegacyAPIError(
-                429,
-                f"You have reached the monthly limit of {ACCESS_REQUEST_MONTHLY_LIMIT} access requests. Please try again next month.",
-            )
-
-        access_request = AccessRequest.objects.create(
-            fullName=full_name.strip(),
-            email=normalized_email,
-            department=department.strip(),
-            rollNo=roll_no.strip() if roll_no and roll_no.strip() else None,
-            description=description.strip(),
-        )
-        return api_response(
-            201,
-            AccessRequestSerializer(access_request).data,
-            "Access request submitted successfully",
-        )
-
-
-class AccessRequestsAdminView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminRole]
-
-    def get(self, request):
-        requests = AccessRequest.objects.all()
-        return api_response(
-            200,
-            {
-                "requests": AccessRequestSerializer(requests, many=True).data,
-                "pendingCount": requests.filter(status=AccessRequest.Status.PENDING).count(),
-            },
-            "Access requests fetched successfully",
-        )
-
-
-class AccessRequestAdminDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminRole]
-
-    def patch(self, request, request_id):
-        request_id = require_object_id(request_id.strip())
-        status = request.data.get("status")
-        if status not in AccessRequest.Status.values:
-            raise LegacyAPIError(400, "Invalid status")
-        try:
-            access_request = AccessRequest.objects.get(pk=request_id)
-        except AccessRequest.DoesNotExist:
-            raise LegacyAPIError(404, "Access request not found")
-        access_request.status = status
-        access_request.save(update_fields=["status", "updated_at"])
-        return api_response(
-            200,
-            AccessRequestSerializer(access_request).data,
-            "Access request updated successfully",
-        )
-
-    def delete(self, request, request_id):
-        request_id = require_object_id(request_id.strip())
-        try:
-            access_request = AccessRequest.objects.get(pk=request_id)
-        except AccessRequest.DoesNotExist:
-            raise LegacyAPIError(404, "Access request not found")
-        access_request.delete()
-        return api_response(
-            200, {"_id": access_request.pk}, "Access request removed successfully"
-        )
-
-
-class BlockedRequestersView(APIView):
-    """Admin-only management of blocked requesters.
-
-    GET lists every blocked email; POST blocks a new email. Blocking is
-    idempotent: blocking an already-blocked email returns the existing row.
-    """
-
-    permission_classes = [IsAuthenticated, IsAdminRole]
-
-    def get(self, request):
-        blocked = BlockedRequester.objects.all()
-        return api_response(
-            200,
-            {
-                "blockedRequesters": BlockedRequesterSerializer(blocked, many=True).data,
-                "totalBlocked": blocked.count(),
-            },
-            "Blocked requesters fetched successfully",
-        )
-
-    def post(self, request):
-        email = request.data.get("email")
-        if not email or not email.strip():
-            raise LegacyAPIError(400, "Email is required.")
-        try:
-            validate_email(email.strip())
-        except Exception:
-            raise LegacyAPIError(400, "Invalid email address.")
-        normalized_email = email.strip().lower()
-        blocked, created = BlockedRequester.objects.get_or_create(
-            email=normalized_email, defaults={"created_by": request.user}
-        )
-        if not created and blocked.created_by is None:
-            blocked.created_by = request.user
-            blocked.save(update_fields=["created_by", "updated_at"])
-        return api_response(
-            201,
-            BlockedRequesterSerializer(blocked).data,
-            "Requester blocked successfully.",
-        )
-
-
-class BlockedRequesterDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminRole]
-
-    def delete(self, request, requester_id):
-        requester_id = require_object_id(requester_id.strip())
-        try:
-            blocked = BlockedRequester.objects.get(pk=requester_id)
-        except BlockedRequester.DoesNotExist:
-            raise LegacyAPIError(404, "Blocked requester not found")
-        blocked.delete()
-        return api_response(200, {"_id": blocked.pk}, "Requester unblocked successfully.")

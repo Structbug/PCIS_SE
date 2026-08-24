@@ -1,9 +1,10 @@
 from rest_framework import status
 from rest_framework.test import APITestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.accounts.models import User
 from apps.accounts.testutils import SecurityAwareAPITestCase
-from .models import ActivityLog, Category, Floor, Item, Room, RoomType, SubCategory
+from .models import ActivityLog, Category, Department, Floor, Item, Room, RoomType, SubCategory
 
 
 def assert_legacy_error(response, expected_status):
@@ -1497,6 +1498,81 @@ class ItemResourceTests(SecurityAwareAPITestCase):
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["data"]["itemRoom"], other_room.pk)
 
+    def test_move_item_department(self):
+        self._auth_as_admin()
+        target_department = Department.objects.create(
+            departmentName="Electrical Engineering",
+            departmentNameNormalized="electrical engineering",
+            createdBy=self.admin,
+        )
+        target_floor = Floor.objects.create(
+            floorName="First", floorNameNormalized="first",
+            department=target_department, createdBy=self.admin,
+        )
+        target_room_type = RoomType.objects.create(
+            roomTypeName="Lab", roomTypeNameNormalized="lab",
+            department=target_department, createdBy=self.admin,
+        )
+        target_room = Room.objects.create(
+            roomName="E101", roomNameNormalized="e101", floor=target_floor,
+            roomType=target_room_type, createdBy=self.admin,
+        )
+        created = self.client.post("/api/v1/items/", {
+            "itemName": "Monitor", "itemCategory": self.category.pk,
+            "itemSubCategory": self.sub_category.pk,
+            "itemFloor": self.floor.pk, "itemRoom": self.room.pk,
+            "itemSource": "Purchase", "itemCost": 100,
+            "itemStatus": "Working", "itemAcquiredDate": "2026-01-15",
+        }, format="json").data["data"][0]
+
+        r = self.client.patch(
+            f"/api/v1/items/{created['_id']}/department",
+            {"new_department_id": target_department.pk, "new_room_id": target_room.pk},
+            format="json",
+        )
+
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["data"]["itemRoom"], target_room.pk)
+        self.assertEqual(r.data["data"]["itemFloor"], target_floor.pk)
+        self.assertTrue(
+            ActivityLog.objects.filter(
+                action="Item department updated", entityId=created["_id"]
+            ).exists()
+        )
+
+    def test_csv_import_preview_and_commit_creates_item_hierarchy(self):
+        self._auth_as_admin()
+        csv_content = (
+            "department,floor,room,room_type,category,subcategory,item_name,model_or_make,source,status,cost,acquired_date,quantity,description\n"
+            "Civil Engineering,First Floor,C101,Lab,Electronics,Monitor,Dell Monitor,P2419H,Purchase,Working,25000,2026-01-15,2,For lab\n"
+        ).encode()
+        preview = self.client.post(
+            "/api/v1/items/import/preview",
+            {"file": SimpleUploadedFile("items.csv", csv_content, content_type="text/csv")},
+        )
+        self.assertEqual(preview.status_code, status.HTTP_200_OK)
+        self.assertEqual(preview.data["data"]["validRows"], 1)
+        self.assertEqual(preview.data["data"]["totalItems"], 2)
+
+        imported = self.client.post(
+            "/api/v1/items/import/commit",
+            {"file": SimpleUploadedFile("items.csv", csv_content, content_type="text/csv")},
+        )
+        self.assertEqual(imported.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(imported.data["data"]["importedItems"], 2)
+        self.assertEqual(Item.objects.filter(itemName="Dell Monitor").count(), 2)
+        self.assertTrue(Department.objects.filter(departmentName="Civil Engineering").exists())
+        self.assertTrue(ActivityLog.objects.filter(action="Items imported from CSV").exists())
+
+    def test_csv_import_is_admin_only(self):
+        self._auth_as_user()
+        csv_content = b"department,floor,room,room_type,item_name,source,status\nCivil,First,C101,Lab,Monitor,Purchase,Working\n"
+        response = self.client.post(
+            "/api/v1/items/import/preview",
+            {"file": SimpleUploadedFile("items.csv", csv_content, content_type="text/csv")},
+        )
+        assert_legacy_error(response, status.HTTP_403_FORBIDDEN)
+
 
 class InventoryResourceTests(SecurityAwareAPITestCase):
     def setUp(self):
@@ -1581,65 +1657,8 @@ class InventoryResourceTests(SecurityAwareAPITestCase):
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertGreater(r.data["data"]["totalLogs"], 0)
 
-    def test_log_delete_single_requires_admin(self):
-        log = ActivityLog.objects.create(action="test", entityType="Item")
-        r = self.user_client.delete(f"/api/v1/inventory/logs/{log.pk}")
-        assert_legacy_error(r, status.HTTP_403_FORBIDDEN)
-        self.assertTrue(ActivityLog.objects.filter(pk=log.pk).exists())
-
-    def test_log_delete_single(self):
-        log = ActivityLog.objects.create(action="test", entityType="Item")
-        r = self.admin_client.delete(f"/api/v1/inventory/logs/{log.pk}")
-        self.assertEqual(r.status_code, status.HTTP_200_OK)
-        self.assertEqual(r.data["data"]["_id"], log.pk)
-        self.assertFalse(ActivityLog.objects.filter(pk=log.pk).exists())
-
     def test_log_serializer_exposes_id(self):
         log = ActivityLog.objects.create(action="test", entityType="Item")
         r = self.admin_client.get("/api/v1/inventory/logs/1")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["data"]["logs"][0]["_id"], log.pk)
-
-    def test_log_delete_single_not_found(self):
-        r = self.admin_client.delete(
-            "/api/v1/inventory/logs/aaaaaaaaaaaaaaaaaaaaaaaa"
-        )
-        assert_legacy_error(r, status.HTTP_404_NOT_FOUND)
-
-    def test_log_delete_single_invalid_id(self):
-        r = self.admin_client.delete("/api/v1/inventory/logs/not-an-id")
-        assert_legacy_error(r, status.HTTP_400_BAD_REQUEST)
-
-    def test_log_clear_all_requires_admin(self):
-        ActivityLog.objects.create(action="test", entityType="Item")
-        r = self.user_client.delete("/api/v1/inventory/logs/clear")
-        assert_legacy_error(r, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(ActivityLog.objects.count(), 1)
-
-    def test_log_clear_all(self):
-        for i in range(3):
-            ActivityLog.objects.create(action=f"test_{i}", entityType="Item")
-        r = self.admin_client.delete("/api/v1/inventory/logs/clear")
-        self.assertEqual(r.status_code, status.HTTP_200_OK)
-        self.assertEqual(r.data["data"]["deleted"], 3)
-        self.assertEqual(ActivityLog.objects.count(), 0)
-
-    def test_log_purge_requires_admin(self):
-        r = self.user_client.delete("/api/v1/inventory/logs/purge/30")
-        assert_legacy_error(r, status.HTTP_403_FORBIDDEN)
-
-    def test_log_purge_older_than_days(self):
-        from datetime import timedelta
-        from django.utils import timezone
-        old = ActivityLog.objects.create(action="old", entityType="Item")
-        old.created_at = timezone.now() - timedelta(days=60)
-        old.save(update_fields=["created_at"])
-        ActivityLog.objects.create(action="new", entityType="Item")
-        r = self.admin_client.delete("/api/v1/inventory/logs/purge/30")
-        self.assertEqual(r.status_code, status.HTTP_200_OK)
-        self.assertEqual(r.data["data"]["deleted"], 1)
-        self.assertEqual(ActivityLog.objects.count(), 1)
-
-    def test_log_purge_invalid_days(self):
-        r = self.admin_client.delete("/api/v1/inventory/logs/purge/0")
-        assert_legacy_error(r, status.HTTP_400_BAD_REQUEST)

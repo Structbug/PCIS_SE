@@ -6,7 +6,8 @@ import { StatusTag, Alert, Modal } from '../../components/ui'
 import { useAuth } from '../../hooks/useAuth'
 import { floorsApi } from '../../api/floors'
 import { roomsApi } from '../../api/rooms'
-import type { ItemReport, Floor, Room } from '../../types'
+import { departmentsApi } from '../../api/departments'
+import type { Department, ItemReport, Floor, Room } from '../../types'
 
 const statusMap: Record<string, string> = { '1234': 'Working', '3456': 'Repairable', '5678': 'Not working' }
 
@@ -19,7 +20,7 @@ export default function ItemDetail() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
-  const [editMode, setEditMode] = useState<'details' | 'status' | 'room' | null>(null)
+  const [editMode, setEditMode] = useState<'details' | 'status' | 'room' | 'department' | null>(null)
   const [deleteModal, setDeleteModal] = useState(false)
 
   const [floors, setFloors] = useState<Floor[]>([])
@@ -70,6 +71,7 @@ export default function ItemDetail() {
               <button className="btn btn-sm" onClick={() => setEditMode('details')}>Edit Details</button>
               <button className="btn btn-sm" onClick={() => setEditMode('status')}>Change Status</button>
               <button className="btn btn-sm" onClick={() => setEditMode('room')}>Move Room</button>
+              <button className="btn btn-sm" onClick={() => setEditMode('department')}>Move Department</button>
               <button className="btn btn-sm btn-danger" onClick={() => setDeleteModal(true)}>Deactivate</button>
             </>
           )}
@@ -171,6 +173,13 @@ export default function ItemDetail() {
         onSaved={() => { refreshItem(); setEditMode(null); setMessage('Room moved') }}
         onError={setError}
         fetchRooms={async (floorId) => { const r = await roomsApi.floorFilter(floorId, '1'); const list = r.data.data?.rooms || []; setRooms(list); return list }}
+      />
+
+      <MoveDepartmentModal
+        open={editMode === 'department'}
+        item={item}
+        onClose={() => setEditMode(null)}
+        onSaved={() => { refreshItem(); setEditMode(null); setMessage('Department moved') }}
       />
 
       {/* Delete confirm */}
@@ -353,6 +362,114 @@ function MoveRoomModal({ open, item, floors, onClose, onSaved, onError, fetchRoo
               {localRooms.map(r => <option key={r._id} value={r._id}>{r.roomName}</option>)}
             </select>
           </div>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function MoveDepartmentModal({ open, item, onClose, onSaved }: {
+  open: boolean; item: ItemReport
+  onClose: () => void; onSaved: () => void
+}) {
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [floors, setFloors] = useState<Floor[]>([])
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [departmentId, setDepartmentId] = useState('')
+  const [floorId, setFloorId] = useState('')
+  const [roomId, setRoomId] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [modalError, setModalError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setDepartmentId('')
+    setFloorId('')
+    setRoomId('')
+    setFloors([])
+    setRooms([])
+    setModalError('')
+    departmentsApi.list().then(r => setDepartments(r.data.data || [])).catch(() => {
+      setDepartments([])
+      setModalError('Could not load departments')
+    })
+  }, [open])
+
+  useEffect(() => {
+    if (!departmentId) return
+    setFloorId('')
+    setRoomId('')
+    setRooms([])
+    setModalError('')
+    floorsApi.list(departmentId).then(r => setFloors(r.data.data || [])).catch(() => {
+      setFloors([])
+      setModalError('No floors are available in this department.')
+    })
+  }, [departmentId])
+
+  useEffect(() => {
+    if (!floorId) return
+    setRoomId('')
+    setModalError('')
+    roomsApi.floorFilter(floorId, '1').then(r => {
+      setRooms(r.data.data.rooms || [])
+    }).catch(() => {
+      setRooms([])
+      setModalError('No rooms are available on this floor.')
+    })
+  }, [floorId])
+
+  const handleSave = async () => {
+    if (!departmentId || !roomId) return
+    setSaving(true)
+    try {
+      await itemsApi.moveDepartment(item._id, departmentId, roomId)
+      onSaved()
+    } catch (err: unknown) {
+      setModalError(apiErrorMessage(err, 'Move failed'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal open={open} title="Move Item to Department" onClose={onClose}
+      footer={
+        <div className="btn-group">
+          <button type="button" className="btn btn-sm" onClick={onClose}>Cancel</button>
+          <button type="submit" form="move-department-form" className="btn btn-sm btn-primary" disabled={saving || !roomId}>
+            {saving ? 'Moving...' : 'Move'}
+          </button>
+        </div>
+      }
+    >
+      <Alert type="error" message={modalError} onDismiss={() => setModalError('')} />
+      <form id="move-department-form" onSubmit={(e) => { e.preventDefault(); handleSave() }}>
+        <p style={{ marginBottom: 12, fontSize: 'var(--font-size-sm)' }}>
+          Current department: <strong>{item.departmentName || 'Unassigned'}</strong>
+        </p>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Department</label>
+            <select className="form-input" value={departmentId} onChange={e => setDepartmentId(e.target.value)}>
+              <option value="">Select department...</option>
+              {departments.map(department => <option key={department._id} value={department._id}>{department.departmentName}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Floor</label>
+            <select className="form-input" value={floorId} onChange={e => setFloorId(e.target.value)} disabled={!departmentId}>
+              <option value="">Select floor...</option>
+              {floors.map(floor => <option key={floor._id} value={floor._id}>{floor.floorName}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="form-group">
+          <label>Room</label>
+          <select className="form-input" value={roomId} onChange={e => setRoomId(e.target.value)} disabled={!floorId}>
+            <option value="">Select room...</option>
+            {rooms.map(room => <option key={room._id} value={room._id}>{room.roomName}</option>)}
+          </select>
         </div>
       </form>
     </Modal>
