@@ -1,4 +1,5 @@
 from django.urls import path, re_path
+from django.http import JsonResponse
 from django.views.generic import TemplateView
 
 from django.conf import settings
@@ -54,7 +55,14 @@ from apps.inventory.views import (
     SubCategoryListCreateView,
 )
 
+
+def healthz(request):
+    """Minimal public readiness endpoint for the platform health check."""
+    return JsonResponse({"status": "ok"})
+
+
 urlpatterns = [
+    path("healthz", healthz, name="healthz"),
     path("api/v1/users/login", LoginView.as_view(), name="login"),
     path("api/v1/users/register", RegisterView.as_view(), name="register"),
     path("api/v1/users/logout", LogoutView.as_view(), name="logout"),
