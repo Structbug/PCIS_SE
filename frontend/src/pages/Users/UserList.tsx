@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { authApi } from '../../api/auth'
+import { apiErrorMessage } from '../../api/errors'
 import { Table, Modal, Alert } from '../../components/ui'
 import { useAuth } from '../../hooks/useAuth'
 import type { User } from '../../types'
@@ -46,7 +47,13 @@ export default function UserList() {
       await authApi.register({ username: formUsername, email: formEmail, phone_number: formPhone, password: formPassword, role: formRole as User['role'] })
       setMessage('User created')
       setRegisterModal(false); loadUsers()
-    } catch { setRegisterError('Registration failed') }
+    } catch (err: unknown) {
+      setRegisterError(apiErrorMessage(err, 'Registration failed', {
+        400: 'Registration failed. Please verify that the password is at least 8 characters long.',
+        409: 'Registration failed. A user with this username or email already exists.',
+        403: 'Registration failed. Please fill out all required fields with valid values.',
+      }))
+    }
     finally { setSaving(false) }
   }
 
@@ -56,7 +63,9 @@ export default function UserList() {
       await authApi.deleteUser(deleteTarget._id)
       setMessage('User deactivated')
       setDeleteTarget(null); loadUsers()
-    } catch { setError('Delete failed') }
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, 'Delete failed'))
+    }
   }
 
   if (!isAdmin) return <Alert type="error" message="Only administrators can manage users." />

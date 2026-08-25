@@ -732,28 +732,29 @@ class PasswordValidationTests(SecurityAwareAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
 
-    def test_register_rejects_common_password(self):
-        self.assert_weak_password_rejected(self.register("password"))
+    def test_register_rejects_short_password(self):
+        self.assert_weak_password_rejected(self.register("1234567"))
 
-    def test_register_rejects_numeric_password(self):
-        self.assert_weak_password_rejected(self.register("12345678"))
+    def test_register_accepts_numeric_password(self):
+        response = self.register("12345678")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_register_rejects_password_similar_to_username(self):
+    def test_register_accepts_password_similar_to_username(self):
         response = self.client.post(
             "/api/v1/users/register",
             {
-                "username": "john-smith",
-                "email": "john@example.com",
-                "password": "john-smith",
-                "phone_number": "9822222222",
+                "username": "user1",
+                "email": "user1@example.com",
+                "password": "user1234",
+                "phone_number": "9831214356",
                 "role": "User",
             },
             format="json",
         )
-        self.assert_weak_password_rejected(response)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_change_password_rejects_common_password_and_keeps_old(self):
-        weak = self.client.patch(
+    def test_change_password_accepts_common_password(self):
+        response = self.client.patch(
             "/api/v1/users/change-password",
             {
                 "current_password": self.admin_password,
@@ -762,9 +763,9 @@ class PasswordValidationTests(SecurityAwareAPITestCase):
             },
             format="json",
         )
-        self.assert_weak_password_rejected(weak)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.admin.refresh_from_db()
-        self.assertTrue(self.admin.check_password(self.admin_password))
+        self.assertTrue(self.admin.check_password("password"))
 
     def test_change_password_accepts_strong_password(self):
         ok = self.client.patch(

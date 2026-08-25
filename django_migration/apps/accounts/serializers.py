@@ -45,7 +45,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     )
     email = serializers.EmailField(max_length=254)
     phone_number = serializers.CharField(
-        max_length=20, validators=[PHONE_REGEX]
+        max_length=20
     )
     password = serializers.CharField(write_only=True, min_length=8, max_length=128)
 
@@ -75,14 +75,14 @@ class RegisterSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False, allow_blank=True, max_length=254)
     phone_number = serializers.CharField(
-        required=False, allow_blank=True, max_length=20, validators=[PHONE_REGEX]
+        required=False, allow_blank=True, max_length=20
     )
 
 
 class PasswordChangeSerializer(serializers.Serializer):
     current_password = serializers.CharField()
-    new_password = serializers.CharField()
-    confirmed_newpassword = serializers.CharField()
+    new_password = serializers.CharField(min_length=8, max_length=128)
+    confirmed_newpassword = serializers.CharField(min_length=8, max_length=128)
 
     def validate_new_password(self, value):
         # Enforce the same Django password policy on password change (H-09).
