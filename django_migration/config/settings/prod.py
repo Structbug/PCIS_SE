@@ -19,7 +19,10 @@ def _require_strong_secret(name, value):
 _require_strong_secret("DJANGO_SECRET_KEY", SECRET_KEY)  # noqa: F405
 _require_strong_secret("ACCESS_TOKEN_SECRET", ACCESS_TOKEN_SECRET)  # noqa: F405
 
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")  # noqa: F405
+# The container health check connects directly to Gunicorn rather than through
+# Coolify's HTTPS proxy.  These loopback hosts make that internal request
+# valid without widening the application's public hostname configuration.
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS") + ["localhost", "127.0.0.1"]  # noqa: F405
 DATABASES = {"default": env.db("DATABASE_URL")}  # noqa: F405
 
 # Never fall back to the development origins in production. When the SPA is
@@ -28,6 +31,9 @@ DATABASES = {"default": env.db("DATABASE_URL")}  # noqa: F405
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])  # noqa: F405
 
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)  # noqa: F405
+# Docker checks readiness over HTTP on the loopback interface.  Keep the
+# public site HTTPS-only while allowing this data-free local readiness probe.
+SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 # Trust the X-Forwarded-Proto header from TLS-terminating proxies so that
