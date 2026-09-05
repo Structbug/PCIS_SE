@@ -5,6 +5,21 @@ and a React + TypeScript frontend. It supports authenticated inventory
 operations across floors, departments, room types, rooms, categories,
 subcategories, items, and activity logs.
 
+## Live Application
+
+[Open PCIS-SE](https://pcis.itclub.asmitphuyal.com.np/login)
+
+## Features
+
+- Secure user registration, login, logout, and token-based authentication
+- Inventory management for items, costs, categories, and subcategories
+- Organization of inventory by floors, departments, room types, and rooms
+- Searchable and filterable inventory views
+- Dashboard charts for inventory and activity insights
+- Activity log tracking for important inventory operations
+- Role-based permissions and protected API endpoints
+- Responsive React interface with dedicated management screens
+
 ## Project Structure
 
 ```text
