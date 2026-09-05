@@ -139,10 +139,7 @@ management code.
 
 Group Name: **R74WC**
 
-- [Abhaya Shrestha](https://github.com/Abhaya-Shresthaa)
+- [Abhaya Shrestha](https://github.com/Abhaya-Shresthaa) (080BCT006)
 - [Aman Ranabhat](https://github.com/AmanRB13) (080BCT013)
 - [Aryan Dahal](https://github.com/Structbug) (080BCT016)
 
-## License
-
-No license has been specified for this project yet.
