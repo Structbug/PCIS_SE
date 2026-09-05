@@ -43,18 +43,17 @@ PCIS_SE/
 - **Authentication:** JWT access and refresh tokens in HTTP-only cookies
 - **Database:** SQLite for development and PostgreSQL for production
 
-## Requirements
+## Local Development Setup
+
+### Prerequisites
 
 - Python 3.12 or newer
 - Node.js 20 or newer and npm
 - PostgreSQL for production deployments
 
-Development uses `django_migration/dev.sqlite3` by default. PostgreSQL is
-required when using the production settings.
-
-## Getting Started
-
 ### 1. Configure the backend
+
+From the repository root, create and activate a virtual environment:
 
 PowerShell:
 
@@ -67,7 +66,6 @@ pip install -r requirements.txt
 ```
 
 Set real values for `DJANGO_SECRET_KEY` and `ACCESS_TOKEN_SECRET` in `.env`.
-The application rejects the placeholder values from `.env.example`.
 
 For a Unix-like shell, activate the environment with:
 
@@ -75,22 +73,39 @@ For a Unix-like shell, activate the environment with:
 source .venv/bin/activate
 ```
 
-### 2. Run migrations and start Django
+Set real values for `DJANGO_SECRET_KEY` and `ACCESS_TOKEN_SECRET` in `.env`.
+Development uses `dev.sqlite3` by default. For production, configure
+`DJANGO_SETTINGS_MODULE=config.settings.prod` and a PostgreSQL `DATABASE_URL`.
+
+### 2. Install dependencies and migrate
 
 From `django_migration/`:
 
 ```bash
+pip install -r requirements.txt
 python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
 ```
 
-The API is available at `http://127.0.0.1:8000/api/v1/`, and the health check
-is available at `http://127.0.0.1:8000/healthz`.
+Optionally create an administrator account:
 
-### 3. Start the frontend
+```bash
+python manage.py createsuperuser
+```
 
-In a second terminal:
+### 3. Start the backend
+
+From `django_migration/`:
+
+```bash
+python manage.py runserver 127.0.0.1:8000
+```
+
+The API is available at `http://127.0.0.1:8000/api/v1/`. The health check is
+available at `http://127.0.0.1:8000/healthz`.
+
+### 4. Start the frontend
+
+In a second terminal, from the repository root:
 
 ```bash
 cd frontend
@@ -98,9 +113,54 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
-The frontend sends API requests to `/api/v1` and uses the development CORS
-allowlist configured by the backend.
+The React application opens at `http://localhost:5173`. Its Vite development
+proxy forwards `/api` requests to `http://127.0.0.1:8000`.
+
+## API Overview
+
+The API uses cookie-based JWT authentication, with protected endpoints requiring
+an authenticated user. Main route groups include:
+
+| Route group | Purpose |
+| --- | --- |
+| `/api/v1/users/` | Registration, login, logout, profiles, passwords, and user administration |
+| `/api/v1/floors/` | Floor management |
+| `/api/v1/departments/` | Department management |
+| `/api/v1/room-types/` | Room type management |
+| `/api/v1/rooms/` | Room creation, search, and floor filtering |
+| `/api/v1/categories/` | Categories and subcategories |
+| `/api/v1/items/` | Item management, search, import, filtering, history, and status updates |
+| `/api/v1/inventory/` | Inventory statistics and activity logs |
+
+Useful endpoints include:
+
+```text
+POST /api/v1/users/login
+POST /api/v1/users/register
+GET  /api/v1/users/current-user
+GET  /api/v1/items/all/1
+GET  /api/v1/items/search
+GET  /api/v1/inventory/stats
+GET  /healthz
+```
+
+Permissions are enforced by the backend, so users only see and change data
+allowed by their role.
+
+## Testing
+
+Backend tests use Django's test runner. From `django_migration/`:
+
+```bash
+python manage.py test
+```
+
+To run the frontend checks, from `frontend/`:
+
+```bash
+npm run build
+npm run lint
+```
 
 ## Useful Commands
 
