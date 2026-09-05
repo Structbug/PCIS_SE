@@ -20,6 +20,13 @@ subcategories, items, and activity logs.
 - Role-based permissions and protected API endpoints
 - Responsive React interface with dedicated management screens
 
+## System Roles
+
+| Role | Capabilities |
+| --- | --- |
+| **User** | View and manage inventory records according to assigned permissions |
+| **Admin** | Manage users, inventory configuration, system-wide records, and activity oversight |
+
 ## Project Structure
 
 ```text
@@ -28,6 +35,13 @@ PCIS_SE/
 ├── frontend/            React + TypeScript + Vite single-page application
 └── README.md            Project documentation
 ```
+
+## Tech Stack
+
+- **Frontend:** React 19, TypeScript, Vite, Axios, and React Router
+- **Backend:** Django 5.2 and Django REST Framework
+- **Authentication:** JWT access and refresh tokens in HTTP-only cookies
+- **Database:** SQLite for development and PostgreSQL for production
 
 ## Requirements
 
@@ -38,7 +52,7 @@ PCIS_SE/
 Development uses `django_migration/dev.sqlite3` by default. PostgreSQL is
 required when using the production settings.
 
-## Local Development
+## Getting Started
 
 ### 1. Configure the backend
 
@@ -120,6 +134,14 @@ The main endpoints are:
 Most API endpoints require an authenticated user. See
 `django_migration/apps/accounts/` for authentication, permissions, and user
 management code.
+
+## Team
+
+Group Name: **R74WC**
+
+- [Abhaya Shrestha](https://github.com/Abhaya-Shresthaa)
+- [Aman Ranabhat](https://github.com/AmanRB13) (080BCT013)
+- [Aryan Dahal](https://github.com/Structbug) (080BCT016)
 
 ## License
 
